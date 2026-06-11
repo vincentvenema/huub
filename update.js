@@ -10,7 +10,6 @@ import { readFile, writeFile } from 'fs/promises';
 const HANDLE = 'funkentechno.bsky.social';
 const BSKY_API = 'https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed';
 const POSTS_TO_SCAN = 100;
-const MAX_ALBUMS = 12;
 const HTML_FILE = 'index.html';
 
 async function fetchBlueskyPosts() {
@@ -100,12 +99,30 @@ async function main() {
   const posts = await fetchBlueskyPosts();
   console.log(`  ${posts.length} posts retrieved`);
 
-  const seen = new Set();
-  const albums = [];
+  const template = await readFile(HTML_FILE, 'utf-8');
+
+  // Find the existing albums array so we accumulate rather than rebuild.
+  const ALBUMS_RE = /const albums = (\[[\s\S]*?\n\]);/;
+  const found = template.match(ALBUMS_RE);
+  if (!found) {
+    console.error('\nError: could not find const albums array in index.html');
+    process.exit(1);
+  }
+
+  let existing = [];
+  try {
+    existing = JSON.parse(found[1]);
+  } catch (e) {
+    console.error('\nError: existing albums array is not valid JSON, aborting to avoid losing the archive:', e.message);
+    process.exit(1);
+  }
+  console.log(`  ${existing.length} albums already in the archive`);
+
+  // seen covers both the existing archive and duplicates within this run.
+  const seen = new Set(existing.map(a => normalizeUrl(a.bandcamp)));
+  const fresh = [];
 
   for (const post of posts) {
-    if (albums.length >= MAX_ALBUMS) break;
-
     const bcUrl = extractBandcampUrl(post);
     if (!bcUrl) continue;
 
@@ -118,35 +135,25 @@ async function main() {
       const meta = await fetchBandcampMeta(normUrl);
       const note = extractNote(post.record.text, meta.artist, meta.album);
       const date = formatDate(post.record.createdAt);
-      albums.push({ ...meta, note, date });
+      fresh.push({ ...meta, note, date });
       console.log('ok');
     } catch (e) {
       console.log(`failed (${e.message})`);
     }
   }
 
-  if (albums.length === 0) {
-    console.log('\nNo albums found. Leaving index.html unchanged.');
+  if (fresh.length === 0) {
+    console.log('\nNo new albums. Archive already up to date.');
     return;
   }
 
-  const template = await readFile(HTML_FILE, 'utf-8');
-  const json = JSON.stringify(albums, null, 2);
-  const ALBUMS_RE = /const albums = \[[\s\S]*?\n\];/;
-  if (!ALBUMS_RE.test(template)) {
-    console.error('\nError: could not find const albums array in index.html');
-    process.exit(1);
-  }
-
-  const updated = template.replace(ALBUMS_RE, `const albums = ${json};`);
-
-  if (updated === template) {
-    console.log('\nNo changes. Feed already up to date.');
-    return;
-  }
+  // Newest finds on top, the whole existing archive kept beneath. Nothing is dropped.
+  const merged = [...fresh, ...existing];
+  const json = JSON.stringify(merged, null, 2);
+  const updated = template.replace(ALBUMS_RE, () => `const albums = ${json};`);
 
   await writeFile(HTML_FILE, updated);
-  console.log(`\nWrote ${albums.length} albums to ${HTML_FILE}`);
+  console.log(`\nAdded ${fresh.length} new (${merged.length} total). Wrote ${HTML_FILE}`);
 }
 
 main().catch(e => {

@@ -228,13 +228,82 @@
     .cover-link { width: 96px; height: 96px; }
     .links { gap: 16px; }
   }
+
+  /* archive grid */
+  .archive {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+    gap: 28px 20px;
+  }
+
+  .arch {
+    display: block;
+    text-decoration: none;
+    color: var(--ink);
+    opacity: 0;
+    animation: rise 0.4s ease-out forwards;
+  }
+
+  .arch-cover {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: var(--placeholder);
+    overflow: hidden;
+    transition: opacity 0.15s;
+  }
+
+  .arch:hover .arch-cover { opacity: 0.85; }
+
+  .arch-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .arch-meta {
+    margin-top: 10px;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .arch-artist {
+    display: block;
+    font-weight: 500;
+    letter-spacing: -0.005em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .arch-album {
+    display: block;
+    color: var(--soft);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .arch-date {
+    display: block;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 11px;
+    color: var(--soft);
+    margin-top: 4px;
+    letter-spacing: -0.01em;
+  }
+
+  @media (max-width: 600px) {
+    .archive { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 22px 14px; }
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
 
   <header>
-    <h1><a href="https://vincentvenema.com/davidjames/#">funkentechno</a> <span class="by">by David James</span></h1>
+    <h1><a href="https://vincentvenema.com/newmusic/">funkentechno</a> <span class="by">by David James</span></h1>
     <p class="intro">
       A reading list of recent album mentions from <a href="https://x.com/funkentechno" target="_blank" rel="noopener">@funkentechno</a> on X.<br>
       <span class="soft">Each entry links through to Bandcamp and Spotify.</span>
@@ -244,6 +313,10 @@
   <div class="section-title">Recent picks</div>
 
   <main class="feed" id="feed"></main>
+
+  <div class="section-title" id="archive-title">Archive</div>
+
+  <div class="archive" id="archive"></div>
 
   <footer>
     <a href="https://x.com/funkentechno" target="_blank" rel="noopener">@funkentechno</a>
@@ -256,7 +329,7 @@
 </div>
 
 <script>
-// edit this list to update the feed
+// album list, newest first, maintained by update.js (recent cards + archive)
 const albums = [
   {
     "artist": "Shed",
@@ -326,9 +399,10 @@ function slug(artist, album) {
   return 'x.com/funkentechno/' + s;
 }
 
-function render() {
-  const feed = document.getElementById('feed');
-  feed.innerHTML = albums.map((a) => `
+const RECENT_COUNT = 6;
+
+function cardHtml(a) {
+  return `
     <article class="album">
       <a class="cover-link" href="${escapeHtml(a.bandcamp)}" target="_blank" rel="noopener" aria-label="${escapeHtml(a.artist)} - ${escapeHtml(a.album)}">
         <img src="${escapeHtml(a.cover)}" alt="${escapeHtml(a.artist)} - ${escapeHtml(a.album)}" loading="lazy">
@@ -347,7 +421,38 @@ function render() {
         </div>
       </div>
     </article>
-  `).join('');
+  `;
+}
+
+function archHtml(a) {
+  return `
+    <a class="arch" href="${escapeHtml(a.bandcamp)}" target="_blank" rel="noopener" aria-label="${escapeHtml(a.artist)} - ${escapeHtml(a.album)}">
+      <span class="arch-cover">
+        <img src="${escapeHtml(a.cover)}" alt="${escapeHtml(a.artist)} - ${escapeHtml(a.album)}" loading="lazy">
+      </span>
+      <span class="arch-meta">
+        <span class="arch-artist">${escapeHtml(a.artist)}</span>
+        <span class="arch-album">${escapeHtml(a.album)}</span>
+        <span class="arch-date">${escapeHtml(a.date)}</span>
+      </span>
+    </a>
+  `;
+}
+
+function render() {
+  const recent = albums.slice(0, RECENT_COUNT);
+  const archive = albums.slice(RECENT_COUNT);
+
+  document.getElementById('feed').innerHTML = recent.map(cardHtml).join('');
+
+  const archiveTitle = document.getElementById('archive-title');
+  const archiveEl = document.getElementById('archive');
+  if (archive.length) {
+    archiveEl.innerHTML = archive.map(archHtml).join('');
+  } else {
+    archiveTitle.style.display = 'none';
+    archiveEl.style.display = 'none';
+  }
 }
 
 render();
