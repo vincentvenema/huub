@@ -62,7 +62,7 @@ function extractBandcampUrl(post) {
   return match ? match[0] : null;
 }
 
-function extractNote(text, artist, album, maxLen = 220) {
+function extractNote(text, artist, album, maxLen = 320) {
   let clean = (text || '').replace(/https?:\/\/\S+/g, '').trim();
 
   // If the post starts with "Artist - Album" or similar, strip that off
@@ -121,10 +121,10 @@ async function main() {
 
   const template = await readFile(HTML_FILE, 'utf-8');
 
-  const ALBUMS_RE = /const albums = (\[[\s\S]*?\n\]);/;
+  const ALBUMS_RE = /const ALBUMS_FUNKENTECHNO = (\[[\s\S]*?\n\]);/;
   const found = template.match(ALBUMS_RE);
   if (!found) {
-    console.error('\nError: could not find const albums array in index.html');
+    console.error('\nError: could not find const ALBUMS_FUNKENTECHNO array in index.html');
     process.exit(1);
   }
 
@@ -179,7 +179,7 @@ async function main() {
   }
 
   const json = JSON.stringify(albums, null, 2);
-  const updated = template.replace(ALBUMS_RE, () => `const albums = ${json};`);
+  const updated = template.replace(ALBUMS_RE, () => `const ALBUMS_FUNKENTECHNO = ${json};`);
 
   if (updated === template) {
     console.log('\nNo changes. Archive already up to date.');
