@@ -9,15 +9,35 @@ import { readFile, writeFile } from 'fs/promises';
 
 const HANDLE = 'funkentechno.bsky.social';
 const BSKY_API = 'https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed';
-const POSTS_TO_SCAN = 100;
+const PAGE_LIMIT = 100;          // posts per API page (max 100)
+const MAX_PAGES = 25;            // safety cap on how far we page back
+const SINCE = new Date('2026-01-01T00:00:00Z');  // only collect posts from this date on
 const HTML_FILE = 'index.html';
 
-async function fetchBlueskyPosts() {
-  const url = `${BSKY_API}?actor=${HANDLE}&limit=${POSTS_TO_SCAN}&filter=posts_no_replies`;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function fetchAuthorFeedPage(cursor) {
+  let url = `${BSKY_API}?actor=${HANDLE}&limit=${PAGE_LIMIT}&filter=posts_no_replies`;
+  if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Bluesky API ${res.status}`);
-  const data = await res.json();
-  return data.feed.map(item => item.post);
+  return res.json();
+}
+
+// Page back through the feed (newest first) until we pass the cutoff date.
+async function fetchPostsSince(cutoff) {
+  const posts = [];
+  let cursor;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const data = await fetchAuthorFeedPage(cursor);
+    const batch = (data.feed || []).map((item) => item.post);
+    posts.push(...batch);
+    cursor = data.cursor;
+    if (!cursor || batch.length === 0) break;
+    const oldest = batch[batch.length - 1];
+    if (oldest?.record?.createdAt && new Date(oldest.record.createdAt) < cutoff) break;
+  }
+  return posts;
 }
 
 function extractBandcampUrl(post) {
@@ -95,13 +115,12 @@ function normalizeUrl(u) {
 }
 
 async function main() {
-  console.log(`Fetching posts from @${HANDLE}...`);
-  const posts = await fetchBlueskyPosts();
+  console.log(`Fetching @${HANDLE} posts back to ${SINCE.toISOString().slice(0, 10)}...`);
+  const posts = await fetchPostsSince(SINCE);
   console.log(`  ${posts.length} posts retrieved`);
 
   const template = await readFile(HTML_FILE, 'utf-8');
 
-  // Find the existing albums array so we accumulate rather than rebuild.
   const ALBUMS_RE = /const albums = (\[[\s\S]*?\n\]);/;
   const found = template.match(ALBUMS_RE);
   if (!found) {
@@ -116,13 +135,18 @@ async function main() {
     console.error('\nError: existing albums array is not valid JSON, aborting to avoid losing the archive:', e.message);
     process.exit(1);
   }
-  console.log(`  ${existing.length} albums already in the archive`);
 
-  // seen covers both the existing archive and duplicates within this run.
-  const seen = new Set(existing.map(a => normalizeUrl(a.bandcamp)));
-  const fresh = [];
+  // Reuse metadata we already have so we don't refetch Bandcamp for known albums.
+  const byUrl = new Map(existing.map((a) => [normalizeUrl(a.bandcamp), a]));
+
+  const seen = new Set();
+  const albums = [];   // full 2026 list, newest first, rebuilt from the feed each run
+  let added = 0;
 
   for (const post of posts) {
+    const created = post?.record?.createdAt ? new Date(post.record.createdAt) : null;
+    if (!created || created < SINCE) continue;       // 2026 onward only
+
     const bcUrl = extractBandcampUrl(post);
     if (!bcUrl) continue;
 
@@ -130,30 +154,40 @@ async function main() {
     if (seen.has(normUrl)) continue;
     seen.add(normUrl);
 
+    if (byUrl.has(normUrl)) {
+      albums.push(byUrl.get(normUrl));               // already known, keep as is
+      continue;
+    }
+
     process.stdout.write(`  ${normUrl} ... `);
     try {
+      await sleep(300);                               // be gentle with Bandcamp
       const meta = await fetchBandcampMeta(normUrl);
       const note = extractNote(post.record.text, meta.artist, meta.album);
       const date = formatDate(post.record.createdAt);
-      fresh.push({ ...meta, note, date });
+      albums.push({ ...meta, note, date });
+      added++;
       console.log('ok');
     } catch (e) {
       console.log(`failed (${e.message})`);
     }
   }
 
-  if (fresh.length === 0) {
-    console.log('\nNo new albums. Archive already up to date.');
+  if (albums.length === 0) {
+    console.log('\nNo 2026 albums found. Leaving index.html unchanged.');
     return;
   }
 
-  // Newest finds on top, the whole existing archive kept beneath. Nothing is dropped.
-  const merged = [...fresh, ...existing];
-  const json = JSON.stringify(merged, null, 2);
+  const json = JSON.stringify(albums, null, 2);
   const updated = template.replace(ALBUMS_RE, () => `const albums = ${json};`);
 
+  if (updated === template) {
+    console.log('\nNo changes. Archive already up to date.');
+    return;
+  }
+
   await writeFile(HTML_FILE, updated);
-  console.log(`\nAdded ${fresh.length} new (${merged.length} total). Wrote ${HTML_FILE}`);
+  console.log(`\n${albums.length} albums in 2026 (${added} newly fetched). Wrote ${HTML_FILE}`);
 }
 
 main().catch(e => {

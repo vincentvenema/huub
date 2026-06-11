@@ -230,7 +230,17 @@
   }
 
   /* archive grid */
-  .archive {
+  .archive { display: flex; flex-direction: column; gap: 48px; }
+
+  .arch-month {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--soft);
+    margin-bottom: 20px;
+    letter-spacing: -0.005em;
+  }
+
+  .arch-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
     gap: 28px 20px;
@@ -295,7 +305,8 @@
   }
 
   @media (max-width: 600px) {
-    .archive { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 22px 14px; }
+    .archive { gap: 36px; }
+    .arch-grid { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 22px 14px; }
   }
 </style>
 </head>
@@ -433,10 +444,19 @@ function archHtml(a) {
       <span class="arch-meta">
         <span class="arch-artist">${escapeHtml(a.artist)}</span>
         <span class="arch-album">${escapeHtml(a.album)}</span>
-        <span class="arch-date">${escapeHtml(a.date)}</span>
       </span>
     </a>
   `;
+}
+
+const MONTH_INDEX = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+const MONTH_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+function monthLabel(dateStr) {
+  const parts = String(dateStr || '').trim().split(/\s+/);
+  const mi = MONTH_INDEX[(parts[0] || '').slice(0, 3).toLowerCase()];
+  if (mi === undefined) return String(dateStr || '');
+  return `${MONTH_LONG[mi]} ${parts[1] || ''}`.trim();
 }
 
 function render() {
@@ -447,12 +467,27 @@ function render() {
 
   const archiveTitle = document.getElementById('archive-title');
   const archiveEl = document.getElementById('archive');
-  if (archive.length) {
-    archiveEl.innerHTML = archive.map(archHtml).join('');
-  } else {
+
+  if (!archive.length) {
     archiveTitle.style.display = 'none';
     archiveEl.style.display = 'none';
+    return;
   }
+
+  const groups = [];
+  for (const a of archive) {
+    const label = monthLabel(a.date);
+    const last = groups[groups.length - 1];
+    if (last && last.label === label) last.items.push(a);
+    else groups.push({ label, items: [a] });
+  }
+
+  archiveEl.innerHTML = groups.map((g) => `
+    <section class="arch-group">
+      <div class="arch-month">${escapeHtml(g.label)}</div>
+      <div class="arch-grid">${g.items.map(archHtml).join('')}</div>
+    </section>
+  `).join('');
 }
 
 render();
