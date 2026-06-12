@@ -36,6 +36,7 @@ jobs:
         run: |
           mkdir -p dist
           cp index.html dist/
+          cp favicon.svg apple-touch-icon.png og-image.png dist/ 2>/dev/null || true
 
       - name: Deploy to Hostinger
         uses: SamKirkland/FTP-Deploy-Action@v4.4.0
