@@ -132,6 +132,12 @@ function replaceArray(template, key, albums) {
   return template.replace(re, () => `const ALBUMS_${key} = ${body};`);
 }
 
+function setUpdated(template) {
+  const re = /const LAST_UPDATED = "[^"]*";/;
+  if (!re.test(template)) return template;
+  return template.replace(re, () => `const LAST_UPDATED = "${new Date().toISOString()}";`);
+}
+
 // ---- funkentechno (Bluesky) ----
 async function buildFunkentechno(existing) {
   const posts = await fetchPostsSince(HANDLE, SINCE);
@@ -300,6 +306,7 @@ async function main() {
   } catch (e) { console.error('line of best fit failed:', e.message); }
 
   if (!changed) { console.log('\nNo changes.'); return; }
+  template = setUpdated(template);
   await writeFile(HTML_FILE, template);
   console.log(`\nWrote ${HTML_FILE}`);
 }

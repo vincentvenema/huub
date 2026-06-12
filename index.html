@@ -167,7 +167,7 @@
   <div id="more"></div>
 
   <footer>
-    <a href="https://vincent.works" target="_blank" rel="noopener">vincent.works</a>
+    <a href="https://vincent.works" target="_blank" rel="noopener">vincent.works</a><span id="updated-wrap" hidden><span class="dot">·</span><span id="updated"></span></span>
   </footer>
 
 </div>
@@ -2065,6 +2065,8 @@ const ALBUMS_FIRSTFLOOR = [
 const ALBUMS_FUTURISM = [
 ];
 
+const LAST_UPDATED = "";
+
 const SOURCES = [
   { id: 'FUNKENTECHNO', label: 'funkentechno', intro: 'Album mentions from @funkentechno on Bluesky.', albums: ALBUMS_FUNKENTECHNO },
   { id: 'AQUARIUMDRUNKARD', label: 'Aquarium Drunkard', intro: 'Album reviews from Aquarium Drunkard.', albums: ALBUMS_AQUARIUMDRUNKARD },
@@ -2132,6 +2134,14 @@ function cardHtml(a) {
     </article>`;
 }
 
+function formatUpdated(iso) {
+  const d = new Date(iso);
+  if (!iso || isNaN(d.getTime())) return '';
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  return `Updated ${d.getUTCDate()} ${MONTH_LONG[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${hh}:${mm} UTC`;
+}
+
 function renderTabs() {
   const tabs = document.getElementById('tabs');
   tabs.innerHTML = SOURCES.map((s) =>
@@ -2191,6 +2201,15 @@ function render() {
 
 renderTabs();
 render();
+
+(function showUpdated() {
+  const t = formatUpdated(LAST_UPDATED);
+  if (!t) return;
+  const el = document.getElementById('updated');
+  const wrap = document.getElementById('updated-wrap');
+  if (el) el.textContent = t;
+  if (wrap) wrap.hidden = false;
+})();
 </script>
 </body>
 </html>
