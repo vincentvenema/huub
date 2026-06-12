@@ -60,7 +60,7 @@
     text-rendering: optimizeLegibility;
   }
 
-  body { min-height: 100vh; padding: 56px 32px 96px; }
+  body { min-height: 100vh; padding: 28px 32px 96px; }
   .wrap { max-width: 720px; margin: 0 auto; }
 
   header { margin-bottom: 32px; }
@@ -68,7 +68,7 @@
   h1 a { display: block; }
   .header-img { display: block; width: 100%; height: auto; transition: opacity 0.15s; }
   h1 a:hover .header-img { opacity: 0.85; }
-  .intro { font-size: 16px; line-height: 1.5; color: var(--soft); max-width: 520px; }
+  .intro { font-size: 16px; line-height: 1.5; color: var(--soft); max-width: 520px; margin-bottom: 28px; }
   .intro a {
     color: var(--soft); text-decoration: underline; text-decoration-color: var(--link-underline);
     text-underline-offset: 3px; text-decoration-thickness: 1px;
@@ -178,7 +178,7 @@
   .dot { margin: 0 8px; color: var(--link-underline); }
 
   @media (max-width: 600px) {
-    body { padding: 40px 20px 64px; }
+    body { padding: 24px 20px 64px; }
     .album { grid-template-columns: 127px 1fr; gap: 20px; padding: 24px 0; }
     .cover-link { width: 127px; height: 127px; }
     .links { gap: 16px; }
@@ -194,9 +194,9 @@
   </header>
 
   <nav class="tabs" id="tabs"></nav>
-  <p class="intro" id="intro"></p>
 
   <div class="section-title">Recent picks</div>
+  <p class="intro" id="intro"></p>
   <main class="feed" id="feed"></main>
 
   <div class="section-title" id="archive-title">Archive</div>
@@ -2117,7 +2117,7 @@ const SOURCES = [
   { id: 'AQUARIUMDRUNKARD', label: 'Aquarium Drunkard', intro: 'Album reviews from <a href="https://aquariumdrunkard.com/" target="_blank" rel="noopener">Aquarium Drunkard</a>.', albums: ALBUMS_AQUARIUMDRUNKARD },
   { id: 'LOBF', label: 'Line of Best Fit', intro: 'Album reviews from <a href="https://www.thelineofbestfit.com/" target="_blank" rel="noopener">The Line of Best Fit</a>.', albums: ALBUMS_LOBF },
   { id: 'FIRSTFLOOR', label: 'First Floor', intro: 'Recommended releases from <a href="https://firstfloor.substack.com/s/recommended-releases" target="_blank" rel="noopener">First Floor</a> by Shawn Reynaldo.', albums: ALBUMS_FIRSTFLOOR },
-  { id: 'FUTURISM', label: 'Futurism Restated', intro: 'Latest editions of <a href="https://futurismrestated.substack.com/" target="_blank" rel="noopener">Futurism Restated</a> by Philip Sherburne.', albums: ALBUMS_FUTURISM }
+  { id: 'FUTURISM', label: 'Futurism Restated', intro: 'Album picks from <a href="https://futurismrestated.substack.com/" target="_blank" rel="noopener">Futurism Restated</a> by Philip Sherburne.', albums: ALBUMS_FUTURISM }
 ];
 
 const HIGHLIGHT_COUNT = 8;
