@@ -510,19 +510,33 @@ async function buildFuturismAlbums() {
 }
 
 // ---- In Sheep's Clothing Hi-Fi (WordPress RSS, one card per feature) ----
+async function fetchFirstWorkingFeed(urls) {
+  let lastErr;
+  for (const u of urls) {
+    try { const xml = await fetchFeedXml(u); console.log(`  feed: ${u.replace(/^https:\/\//, '')}`); return xml; }
+    catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error('no feed url worked');
+}
+
 async function buildInSheeps() {
-  const xml = await fetchFeedXml('https://insheepsclothinghifi.com/feed/');
+  // the features section, not the whole-site feed (which is mostly mixes and events)
+  const xml = await fetchFirstWorkingFeed([
+    'https://insheepsclothinghifi.com/features/feed/',
+    'https://insheepsclothinghifi.com/category/feature/feed/',
+    'https://insheepsclothinghifi.com/category/features/feed/',
+  ]);
   const items = parseRssItems(xml);
-  console.log(`  ${items.length} posts scanned`);
+  console.log(`  ${items.length} features scanned`);
   const seen = new Set();
   const albums = [];
   for (const it of items) {
-    const when = it.pubDate ? new Date(it.pubDate) : null;
-    if (when && !isNaN(when) && when < SINCE) continue;
+    if (albums.length >= 30) break;
     const title = stripHtml(it.title).trim();
     const url = String(it.link || '').split('?')[0];
     if (!title || !url || seen.has(url)) continue;
     seen.add(url);
+    const when = it.pubDate ? new Date(it.pubDate) : null;
     console.log(`    - ${title}`);
     albums.push({
       post: true,
@@ -579,7 +593,7 @@ async function main() {
   try {
     console.log('in sheeps clothing: fetching RSS feed...');
     const albums = await buildInSheeps();
-    if (albums.length) { template = replaceArray(template, 'INSHEEPS', albums); changed = true; console.log(`  ${albums.length} posts`); }
+    if (albums.length) { template = replaceArray(template, 'INSHEEPS', albums); changed = true; console.log(`  ${albums.length} features`); }
     else console.log('  none found, leaving unchanged');
   } catch (e) { console.error('in sheeps clothing failed:', e.message); }
 
