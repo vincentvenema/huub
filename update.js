@@ -288,13 +288,39 @@ async function buildLineOfBestFit() {
 // ---- Substack newsletters (one card per edition) ----
 const SUBSTACK_PAGE = 50;
 
+const SUBSTACK_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+// Substack's JSON API blocks datacenter IPs (e.g. GitHub Actions runners). Try the
+// direct request first, then fall back through read-only proxies that fetch from a
+// non-blocked IP and hand back the body verbatim.
+function substackFetchers(url) {
+  return [
+    url,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+    `https://r.jina.ai/${url}`,
+  ];
+}
+
+async function fetchSubstackJson(url) {
+  let lastErr;
+  for (const u of substackFetchers(url)) {
+    try {
+      const res = await fetch(u, { headers: { 'User-Agent': SUBSTACK_UA, 'Accept': 'application/json' } });
+      if (!res.ok) { lastErr = new Error(`${res.status}`); continue; }
+      const data = JSON.parse(await res.text());
+      if (Array.isArray(data)) return data;
+      lastErr = new Error('non-array body');
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error('all fetchers failed');
+}
+
 async function fetchSubstackArchive(subdomain) {
   const out = [];
   for (let offset = 0; offset < SUBSTACK_PAGE * 6; offset += SUBSTACK_PAGE) {
     const url = `https://${subdomain}.substack.com/api/v1/archive?sort=new&limit=${SUBSTACK_PAGE}&offset=${offset}`;
-    const res = await fetch(url, { headers: { 'User-Agent': 'newmusic-feed/1.0', 'Accept': 'application/json' } });
-    if (!res.ok) throw new Error(`Substack ${subdomain} ${res.status}`);
-    const batch = await res.json();
+    const batch = await fetchSubstackJson(url);
     if (!Array.isArray(batch) || batch.length === 0) break;
     out.push(...batch);
     const last = batch[batch.length - 1];
