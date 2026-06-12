@@ -66,7 +66,7 @@
   header { margin-bottom: 32px; }
   h1 { margin: 0 0 20px; line-height: 0; }
   h1 a { display: block; }
-  .header-img { display: block; width: 100%; max-width: 560px; height: auto; transition: opacity 0.15s; }
+  .header-img { display: block; width: 100%; max-width: 560px; height: auto; margin: 0 auto; transition: opacity 0.15s; }
   h1 a:hover .header-img { opacity: 0.85; }
   .intro { font-size: 16px; line-height: 1.5; color: var(--soft); max-width: 520px; margin-bottom: 28px; }
   .intro a {
@@ -230,6 +230,18 @@
     <a href="https://vincent.works" target="_blank" rel="noopener">vincent.works</a><span class="dot">·</span><a href="https://extraset.ch/typefaces/peak/" target="_blank" rel="noopener">Set in ES Peak</a><span id="updated-wrap" hidden><span class="dot">·</span><span id="updated"></span></span>
   </footer>
 
+</div>
+
+<div id="lightbox" class="lightbox" hidden>
+  <div class="lb-inner">
+    <div class="lb-cover-wrap"></div>
+    <div class="lb-info">
+      <div class="lb-title"></div>
+      <div class="lb-meta"></div>
+      <p class="lb-note"></p>
+      <div class="lb-links links"></div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -2215,7 +2227,7 @@ const ALBUMS_INSHEEPS = [
   }
 ];
 
-const LAST_UPDATED = "2026-06-12T20:29:13.837Z";
+const LAST_UPDATED = "2026-06-12T20:04:49.024Z";
 
 const SOURCES = [
   { id: 'FUNKENTECHNO', label: 'Funkentechno', intro: 'Album mentions from <a href="https://bsky.app/profile/funkentechno.bsky.social" target="_blank" rel="noopener">Funkentechno</a> by David James.', albums: ALBUMS_FUNKENTECHNO },
@@ -2402,16 +2414,5 @@ render();
   if (wrap) wrap.hidden = false;
 })();
 </script>
-<div id="lightbox" class="lightbox" hidden>
-  <div class="lb-inner">
-    <div class="lb-cover-wrap"></div>
-    <div class="lb-info">
-      <div class="lb-title"></div>
-      <div class="lb-meta"></div>
-      <p class="lb-note"></p>
-      <div class="lb-links links"></div>
-    </div>
-  </div>
-</div>
 </body>
 </html>
