@@ -509,6 +509,33 @@ async function buildFuturismAlbums() {
   return albums;
 }
 
+// ---- In Sheep's Clothing Hi-Fi (WordPress RSS, one card per feature) ----
+async function buildInSheeps() {
+  const xml = await fetchFeedXml('https://insheepsclothinghifi.com/feed/');
+  const items = parseRssItems(xml);
+  console.log(`  ${items.length} posts scanned`);
+  const seen = new Set();
+  const albums = [];
+  for (const it of items) {
+    const when = it.pubDate ? new Date(it.pubDate) : null;
+    if (when && !isNaN(when) && when < SINCE) continue;
+    const title = stripHtml(it.title).trim();
+    const url = String(it.link || '').split('?')[0];
+    if (!title || !url || seen.has(url)) continue;
+    seen.add(url);
+    console.log(`    - ${title}`);
+    albums.push({
+      post: true,
+      album: title,
+      note: snippet(cleanADNote(stripHtml(it.description || it.content || '')), 300),
+      cover: it.cover || '',
+      date: formatDate(when && !isNaN(when) ? when.toISOString() : ''),
+      url,
+    });
+  }
+  return albums;
+}
+
 async function main() {
   let template = await readFile(HTML_FILE, 'utf-8');
   let changed = false;
@@ -548,6 +575,13 @@ async function main() {
     if (albums.length) { template = replaceArray(template, 'FUTURISM', albums); changed = true; console.log(`  ${albums.length} albums`); }
     else console.log('  none found, leaving unchanged');
   } catch (e) { console.error('futurism restated failed:', e.message); }
+
+  try {
+    console.log('in sheeps clothing: fetching RSS feed...');
+    const albums = await buildInSheeps();
+    if (albums.length) { template = replaceArray(template, 'INSHEEPS', albums); changed = true; console.log(`  ${albums.length} posts`); }
+    else console.log('  none found, leaving unchanged');
+  } catch (e) { console.error('in sheeps clothing failed:', e.message); }
 
   if (!changed) { console.log('\nNo changes.'); return; }
   template = setUpdated(template);
