@@ -249,16 +249,20 @@ function cleanADNote(text) {
 }
 
 // AD's RSS feed carries the write-ups the REST API leaves empty. Build a link -> note map.
-async function fetchADNotes() {
+async function fetchADExtras() {
   const map = new Map();
   try {
     const xml = await fetchFeedXml('https://aquariumdrunkard.com/feed/');
     const items = parseRssItems(xml);
     for (const it of items) {
+      if (!it.link) continue;
+      const body = it.content || it.description || '';
       const note = cleanADNote(stripHtml(it.description || it.content || ''));
-      if (it.link && note) map.set(normLink(it.link), note);
+      const bandcamp = (body.match(/https?:\/\/[\w-]+\.bandcamp\.com\/(?:album|track)\/[^"'\s)<]+/) || [])[0] || '';
+      const bcId = bandcamp ? '' : ((body.match(/EmbeddedPlayer\/album=(\d+)/) || [])[1] || '');
+      map.set(normLink(it.link), { note, bandcamp, bcId });
     }
-    console.log(`  AD feed: ${map.size} write-ups available`);
+    console.log(`  AD feed: ${map.size} posts available`);
   } catch (e) { console.error('  AD feed fetch failed:', e.message); }
   return map;
 }
@@ -266,20 +270,31 @@ async function fetchADNotes() {
 async function buildAquariumDrunkard() {
   const posts = await fetchADPosts(SINCE.toISOString());
   console.log(`  ${posts.length} posts scanned`);
-  const notes = await fetchADNotes();
+  const extras = await fetchADExtras();
   const seen = new Set();
   const albums = [];
   let filled = 0;
+  let bcFilled = 0;
   for (const post of posts) {
     const a = parseADPost(post);
     if (!a) continue;
     const key = (a.url || a.spotify || a.apple).split('?')[0];
     if (seen.has(key)) continue;
     seen.add(key);
-    if (!a.note) { const n = notes.get(normLink(a.url)); if (n) { a.note = snippet(n, 300); filled++; } }
+    const ex = extras.get(normLink(a.url));
+    if (ex) {
+      if (!a.note && ex.note) { a.note = snippet(ex.note, 300); filled++; }
+      if (!a.bandcamp && ex.bandcamp) { a.bandcamp = ex.bandcamp; bcFilled++; }
+      else if (!a.bandcamp && ex.bcId) {
+        await sleep(300);
+        const meta = await resolveBandcampCover(ex.bcId);
+        if (meta.bandcamp) { a.bandcamp = meta.bandcamp; bcFilled++; }
+        if (!a.cover && meta.cover) a.cover = meta.cover;
+      }
+    }
     albums.push(a);
   }
-  console.log(`  ${filled} notes filled from RSS`);
+  console.log(`  ${filled} notes, ${bcFilled} bandcamp links filled from RSS`);
   return albums;
 }
 
@@ -324,6 +339,8 @@ const SUBSTACK_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit
 function substackFetchers(url) {
   return [
     url,
+    `https://vincentvenema.com/newmusic/feedproxy.php?u=${encodeURIComponent(url)}`,
+    `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`,
     `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
     `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
   ];
