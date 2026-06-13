@@ -169,6 +169,11 @@ function setUpdated(template) {
 }
 
 // ---- funkentechno (Bluesky) ----
+function bskyPostUrl(post) {
+  const rkey = String(post && post.uri ? post.uri : '').split('/').pop();
+  return rkey ? `https://bsky.app/profile/${HANDLE}/post/${rkey}` : '';
+}
+
 async function buildFunkentechno(existing) {
   const posts = await fetchPostsSince(HANDLE, SINCE);
   const byUrl = new Map((existing || []).map((a) => [normalizeUrl(a.bandcamp), a]));
@@ -182,14 +187,14 @@ async function buildFunkentechno(existing) {
     const normUrl = normalizeUrl(bcUrl);
     if (seen.has(normUrl)) continue;
     seen.add(normUrl);
-    if (byUrl.has(normUrl)) { albums.push(byUrl.get(normUrl)); continue; }
+    if (byUrl.has(normUrl)) { const a = byUrl.get(normUrl); if (!a.url) { const u = bskyPostUrl(post); if (u) a.url = u; } albums.push(a); continue; }
     process.stdout.write(`  bandcamp ${normUrl} ... `);
     try {
       await sleep(300);
       const meta = await fetchBandcampMeta(normUrl);
       const note = extractNote(post.record.text, meta.artist, meta.album);
       const date = formatDate(post.record.createdAt);
-      albums.push({ ...meta, note, date });
+      albums.push({ ...meta, note, date, url: bskyPostUrl(post) });
       console.log('ok');
     } catch (e) { console.log(`failed (${e.message})`); }
   }

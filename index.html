@@ -75,7 +75,7 @@
   }
   .intro a:hover { color: var(--ink); text-decoration-color: var(--ink); }
 
-  .tabs { display: flex; flex-wrap: nowrap; gap: 14px; margin-bottom: 8px; padding-bottom: 4px; overflow-x: auto; scrollbar-width: none; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 10px 14px; margin-bottom: 8px; }
   .tabs::-webkit-scrollbar { display: none; }
   .tab {
     appearance: none; background: none; border: none; padding: 0; cursor: pointer;
@@ -90,6 +90,9 @@
 
   .section-title { font-size: 18px; font-weight: 500; margin-bottom: 32px; margin-top: 56px; }
   .tabs + .section-title { margin-top: 16px; margin-bottom: 10px; }
+  .picks-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 14px; margin-top: 18px; margin-bottom: 18px; }
+  .picks-head .section-title { margin: 0; }
+  .picks-head .intro { margin: 0; }
 
   .feed { display: flex; flex-direction: column; }
 
@@ -223,8 +226,10 @@
 
   <nav class="tabs" id="tabs"></nav>
 
-  <div class="section-title">Recent picks</div>
-  <p class="intro" id="intro"></p>
+  <div class="picks-head">
+    <div class="section-title">Recent picks</div>
+    <p class="intro" id="intro"></p>
+  </div>
   <main class="feed" id="feed"></main>
 
   <div class="section-title" id="archive-title">Archive</div>
