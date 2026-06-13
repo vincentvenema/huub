@@ -132,6 +132,36 @@ function replaceArray(template, key, albums) {
   return template.replace(re, () => `const ALBUMS_${key} = ${body};`);
 }
 
+function keyOf(a) {
+  return ((a.url || '') + '|' + (a.artist || '') + '|' + (a.album || a.title || '')).toLowerCase().trim();
+}
+
+// Keep everything already stored; only add genuinely new entries, and fill any
+// gaps (cover / note / bandcamp) on existing ones if a fresh scrape supplies them.
+function mergeAlbums(existing, fresh) {
+  existing = existing || [];
+  fresh = fresh || [];
+  let changed = false;
+  const freshByKey = new Map(fresh.map((a) => [keyOf(a), a]));
+  for (const a of existing) {
+    const f = freshByKey.get(keyOf(a));
+    if (!f) continue;
+    if (!a.cover && f.cover) { a.cover = f.cover; changed = true; }
+    if (!a.note && f.note) { a.note = f.note; changed = true; }
+    if (!a.bandcamp && f.bandcamp) { a.bandcamp = f.bandcamp; changed = true; }
+  }
+  const have = new Set(existing.map(keyOf));
+  const seen = new Set();
+  const added = [];
+  for (const a of fresh) {
+    const k = keyOf(a);
+    if (have.has(k) || seen.has(k)) continue;
+    seen.add(k); added.push(a);
+  }
+  if (added.length) changed = true;
+  return { albums: added.concat(existing), added: added.length, changed };
+}
+
 function setUpdated(template) {
   const re = /const LAST_UPDATED = "[^"]*";/;
   if (!re.test(template)) return template;
@@ -479,7 +509,7 @@ function futurismPicks(contentHtml) {
   return picks;
 }
 
-async function buildFuturismAlbums() {
+async function buildFuturismAlbums(known = null) {
   const xml = await fetchSubstackFeed('futurismrestated');
   const items = parseRssItems(xml);
   const editions = items.filter((it) => /^FR\s*\d+\s*:/i.test(stripHtml(it.title)));
@@ -499,6 +529,7 @@ async function buildFuturismAlbums() {
       const key = (pk.artist + ' - ' + pk.album).toLowerCase();
       if (!pk.artist || !pk.album || seen.has(key)) continue;
       seen.add(key);
+      if (known && known.has(keyOf({ url: edUrl, artist: pk.artist, album: pk.album }))) continue;
       let cover = '';
       let bandcamp = '';
       if (pk.id) {
@@ -603,7 +634,35 @@ async function resolveSubstackOgImage(postUrl) {
   return '';
 }
 
-async function buildFirstFloor() {
+async function buildFirstFloor(known = null) {
+  // 1) Try the recommended-releases section feed, where each item is one release post.
+  for (const u of [
+    'https://firstfloor.substack.com/feed/s/recommended-releases',
+    'https://firstfloor.substack.com/s/recommended-releases/feed',
+  ]) {
+    let xml;
+    try { xml = await fetchFeedXml(u); } catch (e) { continue; }
+    const items = parseRssItems(xml);
+    const out = [];
+    const seen = new Set();
+    for (const it of items) {
+      const title = decodeEntities(stripHtml(it.title)).trim();
+      const parts = title.split(/\s+[\u2013\u2014-]\s+/);
+      if (parts.length < 2) continue;
+      const artist = parts[0].trim();
+      const album = parts.slice(1).join(' \u2013 ').trim();
+      const url = String(it.link || '').split('?')[0];
+      const k = keyOf({ url, artist, album });
+      if (seen.has(k)) continue;
+      seen.add(k);
+      if (known && known.has(k)) continue;
+      out.push({ artist, album, note: snippet(decodeEntities(stripHtml(it.description || it.content || '')), 600), cover: it.cover || '', date: formatDate(it.pubDate ? new Date(it.pubDate).toISOString() : ''), url });
+    }
+    if (out.length) { console.log(`  via section feed (${u.replace(/^https:\/\//, '')}): ${out.length} new`); return out; }
+  }
+  console.log('  no section feed; parsing weekly digests');
+
+  // 2) Fall back to parsing the "Recommended Releases" section out of each digest.
   const xml = await fetchSubstackFeed('firstfloor');
   const items = parseRssItems(xml);
   console.log(`  ${items.length} digests scanned`);
@@ -612,18 +671,19 @@ async function buildFirstFloor() {
   const CAP = 24;
   for (const it of items) {
     if (albums.length >= CAP) break;
+    const body = it.content || '';
+    const releases = firstFloorReleases(body);
+    console.log(`    ${stripHtml(it.title)} | body ${body.length} chars | RR: ${/RECOMMENDED RELEASES/i.test(body) ? 'yes' : 'no'} | ${releases.length} releases`);
     const when = it.pubDate ? new Date(it.pubDate) : null;
     const date = formatDate(when && !isNaN(when) ? when.toISOString() : '');
-    const releases = firstFloorReleases(it.content || '');
-    if (releases.length) console.log(`    ${stripHtml(it.title)} -> ${releases.length} releases`);
     for (const r of releases) {
       if (albums.length >= CAP) break;
-      const key = r.url || (r.artist + ' - ' + r.album).toLowerCase();
-      if (!r.artist || !r.album || seen.has(key)) continue;
-      seen.add(key);
+      const k = keyOf({ url: r.url, artist: r.artist, album: r.album });
+      if (!r.artist || !r.album || seen.has(k)) continue;
+      seen.add(k);
+      if (known && known.has(k)) continue;
       let cover = '';
       if (r.url) { await sleep(300); cover = await resolveSubstackOgImage(r.url); }
-      console.log(`      - ${r.artist} \u2014 ${r.album}${cover ? ' [cover]' : ''}`);
       albums.push({ artist: r.artist, album: r.album, note: snippet(r.note, 600), cover, date, url: r.url });
     }
   }
@@ -644,37 +704,47 @@ async function main() {
 
   try {
     console.log('aquarium drunkard: fetching WordPress API...');
-    const albums = await buildAquariumDrunkard();
-    if (albums.length) { template = replaceArray(template, 'AQUARIUMDRUNKARD', albums); changed = true; console.log(`  ${albums.length} albums`); }
-    else console.log('  no albums found, leaving unchanged');
+    const fresh = await buildAquariumDrunkard();
+    const existing = readArray(template, 'AQUARIUMDRUNKARD') || [];
+    const m = mergeAlbums(existing, fresh);
+    if (m.changed) { template = replaceArray(template, 'AQUARIUMDRUNKARD', m.albums); changed = true; }
+    console.log(`  ${m.added} new, ${m.albums.length} total`);
   } catch (e) { console.error('aquarium drunkard failed:', e.message); }
 
   try {
     console.log('line of best fit: fetching Bluesky...');
-    const albums = await buildLineOfBestFit();
-    if (albums.length) { template = replaceArray(template, 'LOBF', albums); changed = true; console.log(`  ${albums.length} albums`); }
-    else console.log('  no albums found, leaving unchanged');
+    const fresh = await buildLineOfBestFit();
+    const existing = readArray(template, 'LOBF') || [];
+    const m = mergeAlbums(existing, fresh);
+    if (m.changed) { template = replaceArray(template, 'LOBF', m.albums); changed = true; }
+    console.log(`  ${m.added} new, ${m.albums.length} total`);
   } catch (e) { console.error('line of best fit failed:', e.message); }
 
   try {
     console.log('first floor: fetching digest feed...');
-    const albums = await buildFirstFloor();
-    if (albums.length) { template = replaceArray(template, 'FIRSTFLOOR', albums); changed = true; console.log(`  ${albums.length} releases`); }
-    else console.log('  none found, leaving unchanged');
+    const existing = readArray(template, 'FIRSTFLOOR') || [];
+    const fresh = await buildFirstFloor(new Set(existing.map(keyOf)));
+    const m = mergeAlbums(existing, fresh);
+    if (m.changed) { template = replaceArray(template, 'FIRSTFLOOR', m.albums); changed = true; }
+    console.log(`  ${m.added} new, ${m.albums.length} total`);
   } catch (e) { console.error('first floor failed:', e.message); }
 
   try {
     console.log('futurism restated: fetching RSS feed...');
-    const albums = await buildFuturismAlbums();
-    if (albums.length) { template = replaceArray(template, 'FUTURISM', albums); changed = true; console.log(`  ${albums.length} albums`); }
-    else console.log('  none found, leaving unchanged');
+    const existing = readArray(template, 'FUTURISM') || [];
+    const fresh = await buildFuturismAlbums(new Set(existing.map(keyOf)));
+    const m = mergeAlbums(existing, fresh);
+    if (m.changed) { template = replaceArray(template, 'FUTURISM', m.albums); changed = true; }
+    console.log(`  ${m.added} new, ${m.albums.length} total`);
   } catch (e) { console.error('futurism restated failed:', e.message); }
 
   try {
     console.log('in sheeps clothing: fetching RSS feed...');
-    const albums = await buildInSheeps();
-    if (albums.length) { template = replaceArray(template, 'INSHEEPS', albums); changed = true; console.log(`  ${albums.length} features`); }
-    else console.log('  none found, leaving unchanged');
+    const fresh = await buildInSheeps();
+    const existing = readArray(template, 'INSHEEPS') || [];
+    const m = mergeAlbums(existing, fresh);
+    if (m.changed) { template = replaceArray(template, 'INSHEEPS', m.albums); changed = true; }
+    console.log(`  ${m.added} new, ${m.albums.length} total`);
   } catch (e) { console.error('in sheeps clothing failed:', e.message); }
 
   if (!changed) { console.log('\nNo changes.'); return; }
