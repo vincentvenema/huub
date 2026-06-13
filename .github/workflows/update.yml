@@ -28,20 +28,28 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add index.html
-          if git diff --staged --quiet; then
-            echo "No changes."
-          else
+          BRANCH="${GITHUB_REF_NAME}"
+          for i in 1 2 3 4 5; do
+            git add index.html
+            if git diff --staged --quiet; then
+              echo "No changes to push."
+              exit 0
+            fi
             git commit -m "auto: refresh album feed"
-            for i in 1 2 3 4 5; do
-              if git push origin "HEAD:${GITHUB_REF_NAME}"; then
-                echo "pushed"; break
-              fi
-              echo "push rejected, syncing remote (attempt $i)"
-              git pull --rebase --autostash origin "${GITHUB_REF_NAME}" || git rebase --abort || true
-              sleep 3
-            done
-          fi
+            if git push origin "HEAD:${BRANCH}"; then
+              echo "pushed"
+              exit 0
+            fi
+            # index.html is generated; don't rebase it (guaranteed conflict).
+            # Take the latest origin and regenerate on top - the scraper merges add-only.
+            echo "push rejected; rebuilding on latest origin (attempt $i)"
+            git fetch origin "${BRANCH}"
+            git reset --hard "origin/${BRANCH}"
+            node update.js
+            sleep 2
+          done
+          echo "still failing after retries"
+          exit 1
 
       - name: Stage site
         run: |
