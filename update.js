@@ -555,6 +555,81 @@ async function buildInSheeps() {
   return albums;
 }
 
+// ---- First Floor: releases live inside the weekly digest's "Recommended Releases" section ----
+function firstFloorReleases(contentHtml) {
+  const out = [];
+  let rr = String(contentHtml || '');
+  const start = rr.search(/RECOMMENDED RELEASES/i);
+  if (start === -1) return out;
+  rr = rr.slice(start);
+  const end = rr.search(/That brings us to the end/i);
+  if (end !== -1) rr = rr.slice(0, end);
+
+  const headRe = /<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi;
+  const heads = [];
+  let hm;
+  while ((hm = headRe.exec(rr))) heads.push({ text: hm[1], end: headRe.lastIndex, start: hm.index });
+  for (let i = 0; i < heads.length; i++) {
+    const title = decodeEntities(stripHtml(heads[i].text)).trim();
+    const mt = title.match(/^(.+?)\s+[\u2013\u2014-]\s+(.+?)\s*\(([^()]+)\)\s*$/);  // Artist - Album (Label)
+    if (!mt) continue;
+    const body = rr.slice(heads[i].end, i + 1 < heads.length ? heads[i + 1].start : rr.length);
+    const urlM = body.match(/href="(https:\/\/firstfloor\.substack\.com\/p\/[^"]+)"/i);
+    const note = decodeEntities(stripHtml(body))
+      .replace(/LISTEN TO THE MUSIC \+ READ THE FULL WRITE-?UP/ig, '')
+      .replace(/^[\s\u2026.]+/, '')
+      .trim();
+    out.push({ artist: mt[1].trim(), album: mt[2].trim(), label: mt[3].trim(), note, url: urlM ? urlM[1].split('?')[0] : '' });
+  }
+  return out;
+}
+
+// each release links to its own post; the post's og:image is the cover
+async function resolveSubstackOgImage(postUrl) {
+  const routes = [
+    postUrl,
+    `https://vincentvenema.com/newmusic/feedproxy.php?u=${encodeURIComponent(postUrl)}`,
+    `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(postUrl)}`,
+  ];
+  for (const u of routes) {
+    try {
+      const res = await fetch(u, { headers: { 'User-Agent': SUBSTACK_UA } });
+      if (!res.ok) continue;
+      const html = await res.text();
+      const m = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
+      if (m && m[1]) return m[1].replace(/&amp;/g, '&');
+    } catch (e) {}
+  }
+  return '';
+}
+
+async function buildFirstFloor() {
+  const xml = await fetchSubstackFeed('firstfloor');
+  const items = parseRssItems(xml);
+  console.log(`  ${items.length} digests scanned`);
+  const seen = new Set();
+  const albums = [];
+  const CAP = 24;
+  for (const it of items) {
+    if (albums.length >= CAP) break;
+    const when = it.pubDate ? new Date(it.pubDate) : null;
+    const date = formatDate(when && !isNaN(when) ? when.toISOString() : '');
+    const releases = firstFloorReleases(it.content || '');
+    if (releases.length) console.log(`    ${stripHtml(it.title)} -> ${releases.length} releases`);
+    for (const r of releases) {
+      if (albums.length >= CAP) break;
+      const key = r.url || (r.artist + ' - ' + r.album).toLowerCase();
+      if (!r.artist || !r.album || seen.has(key)) continue;
+      seen.add(key);
+      let cover = '';
+      if (r.url) { await sleep(300); cover = await resolveSubstackOgImage(r.url); }
+      console.log(`      - ${r.artist} \u2014 ${r.album}${cover ? ' [cover]' : ''}`);
+      albums.push({ artist: r.artist, album: r.album, note: snippet(r.note, 600), cover, date, url: r.url });
+    }
+  }
+  return albums;
+}
+
 async function main() {
   let template = await readFile(HTML_FILE, 'utf-8');
   let changed = false;
@@ -582,8 +657,8 @@ async function main() {
   } catch (e) { console.error('line of best fit failed:', e.message); }
 
   try {
-    console.log('first floor: fetching RSS feed...');
-    const albums = await buildSubstack('firstfloor', { exclude: /^First Floor\b/i, split: true, tag: 'recommended-releases', releasesOnly: true });
+    console.log('first floor: fetching digest feed...');
+    const albums = await buildFirstFloor();
     if (albums.length) { template = replaceArray(template, 'FIRSTFLOOR', albums); changed = true; console.log(`  ${albums.length} releases`); }
     else console.log('  none found, leaving unchanged');
   } catch (e) { console.error('first floor failed:', e.message); }
