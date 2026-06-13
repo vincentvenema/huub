@@ -4,7 +4,7 @@
 // the GitHub Actions runner) and returns it verbatim. Allowlisted, not an open proxy.
 
 $u = isset($_GET['u']) ? $_GET['u'] : '';
-$allow = array('firstfloor.substack.com', 'futurismrestated.substack.com');
+$allow = array('firstfloor.substack.com', 'futurismrestated.substack.com', 'thequietus.com');
 
 $host = $u ? parse_url($u, PHP_URL_HOST) : '';
 if (!$host || !in_array($host, $allow, true)) {

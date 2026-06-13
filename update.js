@@ -753,7 +753,7 @@ async function main() {
   try {
     console.log('aquarium drunkard: fetching WordPress API...');
     const existing = readArray(template, 'AQUARIUMDRUNKARD') || [];
-    const fresh = await buildAquariumDrunkard(new Set(existing.map(keyOf)));
+    const fresh = await buildAquariumDrunkard(new Set(existing.filter((a) => a.cover).map(keyOf)));
     const m = mergeAlbums(existing, fresh);
     if (m.changed) { template = replaceArray(template, 'AQUARIUMDRUNKARD', m.albums); changed = true; }
     console.log(`  ${m.added} new, ${m.albums.length} total`);
@@ -771,7 +771,7 @@ async function main() {
   try {
     console.log('first floor: fetching digest feed...');
     const existing = readArray(template, 'FIRSTFLOOR') || [];
-    const fresh = await buildFirstFloor(new Set(existing.map(keyOf)));
+    const fresh = await buildFirstFloor(new Set(existing.filter((a) => a.cover).map(keyOf)));
     const m = mergeAlbums(existing, fresh);
     if (m.changed) { template = replaceArray(template, 'FIRSTFLOOR', m.albums); changed = true; }
     console.log(`  ${m.added} new, ${m.albums.length} total`);
@@ -780,7 +780,7 @@ async function main() {
   try {
     console.log('futurism restated: fetching RSS feed...');
     const existing = readArray(template, 'FUTURISM') || [];
-    const fresh = await buildFuturismAlbums(new Set(existing.map(keyOf)));
+    const fresh = await buildFuturismAlbums(new Set(existing.filter((a) => a.cover).map(keyOf)));
     const m = mergeAlbums(existing, fresh);
     if (m.changed) { template = replaceArray(template, 'FUTURISM', m.albums); changed = true; }
     console.log(`  ${m.added} new, ${m.albums.length} total`);
