@@ -302,7 +302,7 @@ async function fetchADExtras() {
   return map;
 }
 
-async function buildAquariumDrunkard() {
+async function buildAquariumDrunkard(known = null) {
   const posts = await fetchADPosts(SINCE.toISOString());
   console.log(`  ${posts.length} posts scanned`);
   const extras = await fetchADExtras();
@@ -320,12 +320,17 @@ async function buildAquariumDrunkard() {
     if (ex) {
       if (!a.note && ex.note) { a.note = snippet(ex.note, 600); filled++; }
       if (!a.bandcamp && ex.bandcamp) { a.bandcamp = ex.bandcamp; bcFilled++; }
-      else if (!a.bandcamp && ex.bcId) {
+      else if (!a.bandcamp && ex.bcId && (!known || !known.has(keyOf(a)))) {
         await sleep(300);
         const meta = await resolveBandcampCover(ex.bcId);
         if (meta.bandcamp) { a.bandcamp = meta.bandcamp; bcFilled++; }
         if (!a.cover && meta.cover) a.cover = meta.cover;
       }
+    }
+    if (!a.cover && (!known || !known.has(keyOf(a)))) {
+      await sleep(300);
+      const ic = await coverFromItunes(a.artist, a.album);
+      if (ic) a.cover = ic;
     }
     albums.push(a);
   }
@@ -543,6 +548,7 @@ async function buildFuturismAlbums(known = null) {
         cover = meta.cover || '';
         bandcamp = meta.bandcamp || '';
       }
+      if (!cover) { await sleep(300); cover = await coverFromItunes(pk.artist, pk.album); }
       console.log(`      - ${pk.artist} \u2014 ${pk.album}${cover ? ' [cover]' : ''}`);
       albums.push({ artist: pk.artist, album: pk.album, note: snippet(pk.note, 600), cover, bandcamp, date: edDate, url: edUrl });
     }
@@ -639,6 +645,21 @@ async function resolveSubstackOgImage(postUrl) {
   return '';
 }
 
+let ITUNES_BUDGET = 80;
+async function coverFromItunes(artist, album) {
+  if (!artist || !album || ITUNES_BUDGET <= 0) return '';
+  ITUNES_BUDGET--;
+  try {
+    const term = encodeURIComponent((artist + ' ' + album).trim());
+    const res = await fetch(`https://itunes.apple.com/search?term=${term}&entity=album&limit=1`, { headers: { 'User-Agent': SUBSTACK_UA } });
+    if (!res.ok) return '';
+    const data = JSON.parse(await res.text());
+    const r = data && data.results && data.results[0];
+    if (!r || !r.artworkUrl100) return '';
+    return r.artworkUrl100.replace(/\/\d+x\d+bb\.(jpg|png)/, '/600x600bb.$1');
+  } catch (e) { return ''; }
+}
+
 async function buildFirstFloor(known = null) {
   // 1) Try the recommended-releases section feed, where each item is one release post.
   for (const u of [
@@ -661,7 +682,10 @@ async function buildFirstFloor(known = null) {
       if (seen.has(k)) continue;
       seen.add(k);
       if (known && known.has(k)) continue;
-      out.push({ artist, album, note: snippet(decodeEntities(stripHtml(it.description || it.content || '')), 600), cover: it.cover || '', date: formatDate(it.pubDate ? new Date(it.pubDate).toISOString() : ''), url });
+      await sleep(300);
+      let cover = await coverFromItunes(artist, album);
+      if (!cover) cover = it.cover || '';
+      out.push({ artist, album, note: snippet(decodeEntities(stripHtml(it.description || it.content || '')), 600), cover, date: formatDate(it.pubDate ? new Date(it.pubDate).toISOString() : ''), url });
     }
     if (out.length) { console.log(`  via section feed (${u.replace(/^https:\/\//, '')}): ${out.length} new`); return out; }
   }
@@ -687,12 +711,31 @@ async function buildFirstFloor(known = null) {
       if (!r.artist || !r.album || seen.has(k)) continue;
       seen.add(k);
       if (known && known.has(k)) continue;
-      let cover = '';
-      if (r.url) { await sleep(300); cover = await resolveSubstackOgImage(r.url); }
+      await sleep(300);
+      let cover = await coverFromItunes(r.artist, r.album);
+      if (!cover && r.url) cover = await resolveSubstackOgImage(r.url);
       albums.push({ artist: r.artist, album: r.album, note: snippet(r.note, 600), cover, date, url: r.url });
     }
   }
   return albums;
+}
+
+async function buildQuietus() {
+  const xml = await fetchFeedXml('https://thequietus.com/columns/quietus-reviews/album-of-the-week/feed/');
+  const items = parseRssItems(xml);
+  console.log(`  ${items.length} reviews scanned`);
+  const seen = new Set();
+  const out = [];
+  for (const it of items) {
+    if (out.length >= 30) break;
+    const title = decodeEntities(stripHtml(it.title)).trim().replace(/[\s:]*is\s+our\s+album\s+of\s+the\s+week\.?$/i, '').trim();
+    const url = String(it.link || '').split('?')[0];
+    if (!title || !url || seen.has(url)) continue;
+    seen.add(url);
+    const when = it.pubDate ? new Date(it.pubDate) : null;
+    out.push({ post: true, album: title, note: snippet(cleanADNote(stripHtml(it.description || it.content || '')), 600), cover: it.cover || '', date: formatDate(when && !isNaN(when) ? when.toISOString() : ''), url });
+  }
+  return out;
 }
 
 async function main() {
@@ -709,8 +752,8 @@ async function main() {
 
   try {
     console.log('aquarium drunkard: fetching WordPress API...');
-    const fresh = await buildAquariumDrunkard();
     const existing = readArray(template, 'AQUARIUMDRUNKARD') || [];
+    const fresh = await buildAquariumDrunkard(new Set(existing.map(keyOf)));
     const m = mergeAlbums(existing, fresh);
     if (m.changed) { template = replaceArray(template, 'AQUARIUMDRUNKARD', m.albums); changed = true; }
     console.log(`  ${m.added} new, ${m.albums.length} total`);
@@ -751,6 +794,15 @@ async function main() {
     if (m.changed) { template = replaceArray(template, 'INSHEEPS', m.albums); changed = true; }
     console.log(`  ${m.added} new, ${m.albums.length} total`);
   } catch (e) { console.error('in sheeps clothing failed:', e.message); }
+
+  try {
+    console.log('the quietus: fetching RSS feed...');
+    const fresh = await buildQuietus();
+    const existing = readArray(template, 'QUIETUS') || [];
+    const m = mergeAlbums(existing, fresh);
+    if (m.changed) { template = replaceArray(template, 'QUIETUS', m.albums); changed = true; }
+    console.log(`  ${m.added} new, ${m.albums.length} total`);
+  } catch (e) { console.error('the quietus failed:', e.message); }
 
   if (!changed) { console.log('\nNo changes.'); return; }
   template = setUpdated(template);
